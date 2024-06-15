@@ -1,140 +1,110 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
-from torchvision import models
-from torchvision.models import ResNet50_Weights, VGG16_Weights, EfficientNet_B0_Weights
-from Preprocessing import load_data, create_dataloaders
-from PIL import Image
-import numpy as np
-import matplotlib.pyplot as plt
+from torch.utils.data import DataLoader, random_split
+from torchvision import transforms
+from Loading_Data import GreekCharactersDataset
 
-# Define the device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Define the CNN model
+class CNNClassifier(nn.Module):
+    def __init__(self, num_classes):
+        super(CNNClassifier, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, kernel_size=3, padding=1)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        self.fc1 = nn.Linear(128 * 4 * 4, 256)
+        self.fc2 = nn.Linear(256, num_classes)
+        self.dropout = nn.Dropout(0.5)
 
-# Helper function to get the model
-def get_model(model_name, num_classes):
-    if model_name == 'resnet':
-        model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        model.fc = nn.Linear(model.fc.in_features, num_classes)
-    elif model_name == 'vgg':
-        model = models.vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        model.classifier[6] = nn.Linear(model.classifier[6].in_features, num_classes)
-    elif model_name == 'efficientnet':
-        model = models.efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1)
-        model.classifier[1] = nn.Linear(model.classifier[1].in_features, num_classes)
-    else:
-        raise ValueError("Invalid model name")
-    
-    return model.to(device)
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = self.pool(F.relu(self.conv3(x)))
+        x = x.view(-1, 128 * 4 * 4)
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = self.fc2(x)
+        return x
 
-# Load the data
-json_path = 'Data/HomerCompTrainingReadCoco.json'
-data, category_id_to_name, unique_ids = load_data(json_path)
-
-# Create data loaders
-train_loader, val_loader, test_loader = create_dataloaders(data, category_id_to_name, unique_ids)
-
-# Initialize the model, criterion and optimizer
-num_classes = len(category_id_to_name)
-model_name = 'resnet'  # Change to 'vgg' or 'efficientnet' for other models
-model = get_model(model_name, num_classes)
-criterion = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-# Training loop
-num_epochs = 10
-for epoch in range(num_epochs):
-    model.train()
-    running_loss = 0.0
-    for images, labels in train_loader:
-        images, labels = images.to(device), labels.to(device)
-        
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        
-        running_loss += loss.item()
-    
-    print(f"Epoch {epoch+1}/{num_epochs}, Loss: {running_loss/len(train_loader)}")
-    
-    # Validation
-    model.eval()
-    val_loss = 0.0
-    with torch.no_grad():
-        for images, labels in val_loader:
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            val_loss += loss.item()
-    
-    print(f"Validation Loss: {val_loss/len(val_loader)}")
-
-print("Training complete")
-
-# Test the model
-model.eval()
-test_loss = 0.0
-with torch.no_grad():
-    for images, labels in test_loader:
-        images, labels = images.to(device), labels.to(device)
-        outputs = model(images)
-        loss = criterion(outputs, labels)
-        test_loss += loss.item()
-
-print(f"Test Loss: {test_loss/len(test_loader)}")
-
-# Save the trained model
-torch.save(model.state_dict(), 'trained_model.pth')
-
-# Prediction function
-def load_and_preprocess_image(image_path, transform):
-    image = Image.open(image_path).convert("RGB")
-    image = transform(image)
-    return image.unsqueeze(0)  # Add batch dimension
-
-def predict_single_image(model, image_path, transform, category_id_to_name, threshold=0.5):
-    # Load and preprocess the image
-    image = load_and_preprocess_image(image_path, transform)
-    image = image.to(device)
-
-    # Put the model in evaluation mode and disable gradient computation
-    model.eval()
-    with torch.no_grad():
-        outputs = model(image)
-    
-    # Apply sigmoid to get probabilities
-    probabilities = torch.sigmoid(outputs).cpu().numpy()[0]
-
-    # Get predicted labels based on threshold
-    predicted_labels = [category_id_to_name[idx] for idx, prob in enumerate(probabilities) if prob >= threshold]
-
-    return predicted_labels, probabilities
-
-# Define the transform
+# Define the transformations
 transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+    transforms.Resize((32, 32)),
     transforms.ToTensor(),
+    transforms.Normalize((0.5,), (0.5,))
 ])
 
-# Sample image path for prediction
-sample_image_path = 'path_to_your_sample_image.jpg'
+# Create the dataset
+dataset = GreekCharactersDataset(json_path='Data/HomerCompTrainingReadCoco.json', images_dir='Data/HomerCompTraining', transform=transform)
 
-# Load your trained model weights (if not already loaded)
-model.load_state_dict(torch.load('trained_model.pth', map_location=device))
-model = model.to(device)
+# Split the dataset into training, validation, and test sets
+train_size = int(0.7 * len(dataset))
+val_size = int(0.15 * len(dataset))
+test_size = len(dataset) - train_size - val_size
+train_dataset, val_dataset, test_dataset = random_split(dataset, [train_size, val_size, test_size])
 
-# Predict
-predicted_labels, probabilities = predict_single_image(model, sample_image_path, transform, category_id_to_name)
+# Custom collate function to handle variable-length labels
+def collate_fn(batch):
+    images, labels, boxes = zip(*batch)
+    images = torch.stack(images, 0)
+    return images, labels, boxes
 
-# Display the results
-print(f"Predicted labels: {predicted_labels}")
-print(f"Probabilities: {probabilities}")
+# Create DataLoader
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=collate_fn)
 
-# Optionally, display the image
-image = Image.open(sample_image_path).convert("RGB")
-plt.imshow(image)
-plt.title(f"Predicted labels: {', '.join(predicted_labels)}")
-plt.axis('off')
-plt.show()
+# Initialize model, loss function, and optimizer
+num_classes = len(dataset.category_id_to_name)
+model = CNNClassifier(num_classes)
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# Training function
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=25):
+    for epoch in range(num_epochs):
+        model.train()
+        running_loss = 0.0
+        for images, labels, _ in train_loader:
+            optimizer.zero_grad()
+            outputs = model(images)
+            # Assuming single label per image
+            labels = torch.stack([torch.tensor(label[0]) for label in labels])
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        
+        val_loss = 0.0
+        model.eval()
+        with torch.no_grad():
+            for images, labels, _ in val_loader:
+                outputs = model(images)
+                # Assuming single label per image
+                labels = torch.stack([torch.tensor(label[0]) for label in labels])
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+        
+        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {running_loss/len(train_loader)}, Validation Loss: {val_loss/len(val_loader)}")
+
+# Train the model
+train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=50)
+
+# Evaluation function
+def evaluate_model(model, test_loader):
+    model.eval()
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for images, labels, _ in test_loader:
+            outputs = model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            labels = torch.stack([torch.tensor(label[0]) for label in labels])
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+            print(predicted, labels)
+    print(f'Accuracy of the model on the test images: {100 * correct / total}%')
+
+# Evaluate the model
+evaluate_model(model, test_loader)
