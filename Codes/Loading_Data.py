@@ -71,46 +71,33 @@ class GreekCharactersDataset(Dataset):
         self.img_list = []
         self.labels = []
 
+        # Load and process all images
+        self._process_all_images()
+
+    def _process_all_images(self):
+        for image_info in self.images_info:
+            image_id = image_info['id']
+            image_path = os.path.join(self.images_dir, image_info['file_name'][2:])
+            
+            # Load image and convert to RGB
+            image = Image.open(image_path).convert("RGB")
+            
+            annotations = self.image_id_to_annotations[image_id]
+            for ann in annotations:
+                try:
+                    cropped_img = crop_box(image, ann['bbox'])
+                    if self.transform:
+                        cropped_img = self.transform(cropped_img)
+                    self.img_list.append(cropped_img)
+                    self.labels.append(ann['category_id'])
+                except Exception as e:
+                    print(f"Error cropping image ID {image_id} with bbox {ann['bbox']}: {e}")
+
     def __len__(self):
-        return len(self.images_info)
+        return len(self.img_list)
 
     def __getitem__(self, idx):
-        image_info = self.images_info[idx]
-        image_id = image_info['id']
-        image_path = os.path.join(self.images_dir, image_info['file_name'][2:])
-        
-        # Load image and convert to RGB
-        image = Image.open(image_path).convert("RGB")
-        
-        # # Debug: Show the original image
-        # print(f"Original image - ID: {image_id}")
-        # show_image(image)
-        
-        annotations = self.image_id_to_annotations[image_id]
-
-        
-        for ann in annotations:
-            try:
-                cropped_img = crop_box(image, ann['bbox'])
-                self.img_list.append(cropped_img)
-                self.labels.append(ann['category_id'])
-                # # Debug: Show cropped image before transformation
-                # print(f"Cropped image before transformation")
-                # show_image(cropped_img)
-                # print(ann['category_id'])
-            except Exception as e:
-
-                print(f"Error cropping image ID {image_id} with bbox {ann['bbox']}: {e}")
-
-        if self.transform:
-            self.img_list = [self.transform(img) for img in self.img_list]
-
-        # # Debug: Show cropped images after transformation
-        # for i, img in enumerate(self.img_list):
-        #     print(f"Cropped image {i+1} after transformation")
-        #     show_image(img)
-
-        return img_list, labels
+        return self.img_list[idx], self.labels[idx]
 
 # Example usage
 transform = transforms.Compose([
@@ -119,9 +106,9 @@ transform = transforms.Compose([
 ])
 
 dataset = GreekCharactersDataset(json_path='Data/HomerCompTrainingReadCoco.json', images_dir='Data/HomerCompTraining', transform=transform)
+print(len(dataset))
 
-# Display the first image and its cropped versions
-img_list, labels = dataset[0]
-for img,lbl in zip(img_list, labels):
-    show_image(img)
-    print()
+# Display the first cropped image and its label
+# img, label = dataset[0]
+# show_image(img)
+# print(label)
