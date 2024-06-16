@@ -4,6 +4,7 @@ import torch
 from torchvision import transforms
 from torch.utils.data import Dataset
 from PIL import Image, ImageFile
+import matplotlib.pyplot as plt
 
 # Allow loading of truncated images
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -31,6 +32,29 @@ def get_category_mapping(data):
         print(f"Error: Key {e} not found in the JSON data.")
         raise
 
+def validate_bbox(bbox, image_size):
+    # Ensure bbox is within image bounds
+    x, y, w, h = bbox
+    image_width, image_height = image_size
+    x = max(0, x)
+    y = max(0, y)
+    w = min(w, image_width - x)
+    h = min(h, image_height - y)
+    return (x, y, w, h)
+
+def crop_box(image, bbox):
+    bbox = validate_bbox(bbox, image.size)
+    cropped_image = image.crop((bbox[0], bbox[1], bbox[0] + bbox[2], bbox[1] + bbox[3]))
+    return cropped_image
+
+def show_image(image):
+    # Convert tensor to PIL image if needed
+    if isinstance(image, torch.Tensor):
+        image = transforms.ToPILImage()(image)
+    plt.imshow(image)
+    plt.axis('off')  # Hide axes
+    plt.show()
+
 class GreekCharactersDataset(Dataset):
     def __init__(self, json_path, images_dir, transform=None):
         self.data = load_json_data(json_path)
@@ -42,36 +66,62 @@ class GreekCharactersDataset(Dataset):
         self.image_id_to_annotations = {item['id']: [] for item in self.data['images']}
         for annotation in self.data['annotations']:
             self.image_id_to_annotations[annotation['image_id']].append(annotation)
+        
+        self.images_info = self.data['images']
+        self.img_list = []
+        self.labels = []
 
     def __len__(self):
-        return len(self.data['images'])
+        return len(self.images_info)
 
     def __getitem__(self, idx):
-        try:
-            image_info = self.data['images'][idx]
-            image_id = image_info['id']
-            image_path = os.path.join(self.images_dir, image_info['file_name'][2:])
-            image = Image.open(image_path).convert("RGB")
-            annotations = self.image_id_to_annotations[image_id]
+        image_info = self.images_info[idx]
+        image_id = image_info['id']
+        image_path = os.path.join(self.images_dir, image_info['file_name'][2:])
+        
+        # Load image and convert to RGB
+        image = Image.open(image_path).convert("RGB")
+        
+        # # Debug: Show the original image
+        # print(f"Original image - ID: {image_id}")
+        # show_image(image)
+        
+        annotations = self.image_id_to_annotations[image_id]
 
-            boxes = [ann['bbox'] for ann in annotations]
-            labels = [ann['category_id'] for ann in annotations]
+        
+        for ann in annotations:
+            try:
+                cropped_img = crop_box(image, ann['bbox'])
+                self.img_list.append(cropped_img)
+                self.labels.append(ann['category_id'])
+                # # Debug: Show cropped image before transformation
+                # print(f"Cropped image before transformation")
+                # show_image(cropped_img)
+                # print(ann['category_id'])
+            except Exception as e:
 
-            if self.transform:
-                image = self.transform(image)
+                print(f"Error cropping image ID {image_id} with bbox {ann['bbox']}: {e}")
 
-            target = {
-                'boxes': torch.tensor(boxes, dtype=torch.float32),
-                'labels': torch.tensor(labels, dtype=torch.int64)
-            }
+        if self.transform:
+            self.img_list = [self.transform(img) for img in self.img_list]
 
-            return image, target['labels'], target['boxes']
-        except IndexError:
-            print(f"Error: Index {idx} is out of range.")
-            raise
-        except KeyError as e:
-            print(f"Error: Key {e} not found in the annotations.")
-            raise
-        except FileNotFoundError:
-            print(f"Error: Image file at {image_path} was not found.")
-            raise
+        # # Debug: Show cropped images after transformation
+        # for i, img in enumerate(self.img_list):
+        #     print(f"Cropped image {i+1} after transformation")
+        #     show_image(img)
+
+        return img_list, labels
+
+# Example usage
+transform = transforms.Compose([
+    transforms.Resize((128, 128)),
+    transforms.ToTensor()
+])
+
+dataset = GreekCharactersDataset(json_path='Data/HomerCompTrainingReadCoco.json', images_dir='Data/HomerCompTraining', transform=transform)
+
+# Display the first image and its cropped versions
+img_list, labels = dataset[0]
+for img,lbl in zip(img_list, labels):
+    show_image(img)
+    print()
