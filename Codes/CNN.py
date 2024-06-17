@@ -131,7 +131,9 @@ class BinarizeTransform:
         img = img.convert('L')  # Convert to grayscale
         np_img = np.array(img)
         np_img = (np_img > 128).astype(np.uint8) * 255  # Simple threshold
-        return Image.fromarray(np_img)
+        img = Image.fromarray(np_img)
+        img = img.convert('RGB')  # Convert back to RGB
+        return img
 
 
 class AddGaussianNoise:
