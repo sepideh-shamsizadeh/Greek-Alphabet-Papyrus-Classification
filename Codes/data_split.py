@@ -65,7 +65,6 @@ class PapyrusDataProcessor:
             plt.text(box[0], box[1] - 10, label, color='white', backgroundcolor='red', fontsize=5, weight='bold')
         plt.show()
 
-# Example usage
 if __name__ == '__main__':
     processor = PapyrusDataProcessor('Data/HomerCompTrainingReadCoco.json', 'Data/HomerCompTraining')
     train_data, validation_data, test_data = processor.split_data()

@@ -32,6 +32,8 @@ class SimpleCNN(nn.Module):
         return out
 
 
+
+
 class Trainer:
     def __init__(self, model, device, criterion, optimizer):
         self.model = model
@@ -39,9 +41,10 @@ class Trainer:
         self.criterion = criterion
         self.optimizer = optimizer
 
-    def train(self, train_loader, num_epochs):
-        self.model.train()
+    def train(self, train_loader, num_epochs, val_loader=None):
         for epoch in range(num_epochs):
+            # Training phase
+            self.model.train()
             running_loss = 0.0
             all_preds = []
             all_labels = []
@@ -62,12 +65,22 @@ class Trainer:
                     all_preds.extend(predicted.cpu().numpy())
                     all_labels.extend(lbl.cpu().numpy())
 
-                if (i+1) % 10 == 0:
-                    accuracy = accuracy_score(all_labels, all_preds)
-                    print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {running_loss/10:.4f}, Accuracy: {accuracy:.4f}')
-                    running_loss = 0.0
-                    all_preds = []
-                    all_labels = []
+                    if (i+1) % 10 == 0:
+                        accuracy = accuracy_score(all_labels, all_preds)
+                        print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {running_loss/10:.4f}, Accuracy: {accuracy:.4f}')
+                        running_loss = 0.0
+                        all_preds = []
+                        all_labels = []
+
+            epoch_loss = running_loss / len(train_loader)
+            epoch_accuracy = accuracy_score(all_labels, all_preds)
+            print(f'Epoch [{epoch+1}/{num_epochs}], Training Loss: {epoch_loss:.4f}, Training Accuracy: {epoch_accuracy:.4f}')
+            
+            # Validation phase
+            if val_loader is not None:
+                print("Running validation...")
+                val_loss, val_accuracy = self.validate(val_loader)
+                print(f'Epoch [{epoch+1}/{num_epochs}], Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.4f}')
 
     def validate(self, val_loader):
         self.model.eval()
@@ -87,9 +100,9 @@ class Trainer:
                     val_preds.extend(predicted.cpu().numpy())
                     val_labels.extend(lbl.cpu().numpy())
 
+        val_loss /= len(val_loader)
         val_accuracy = accuracy_score(val_labels, val_preds)
-        print(f'Validation Loss: {val_loss/len(val_loader):.4f}, Validation Accuracy: {val_accuracy:.4f}')
-        return val_loss / len(val_loader), val_accuracy
+        return val_loss, val_accuracy
 
     def test(self, test_loader):
         self.model.eval()
@@ -109,6 +122,7 @@ class Trainer:
         test_accuracy = accuracy_score(test_labels, test_preds)
         print(f'Test Accuracy: {test_accuracy:.4f}')
         return test_accuracy
+
 
 
 
@@ -146,8 +160,7 @@ def main():
     trainer = Trainer(model, device, criterion, optimizer)
 
     print('Start training...')
-    trainer.train(train_loader, num_epochs)
-    trainer.validate(val_loader)
+    trainer.train(train_loader, num_epochs, val_loader)
     trainer.test(test_loader)
     print('Finished Training and Testing')
 
