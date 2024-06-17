@@ -6,6 +6,10 @@ from data_loader import CustomDataset
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from sklearn.metrics import accuracy_score
+from PIL import Image
+import numpy as np
+import random
+
 
 class SimpleCNN(nn.Module):
     def __init__(self, num_classes):
@@ -30,8 +34,6 @@ class SimpleCNN(nn.Module):
         out = self.fc1(out)
         out = self.fc2(out)
         return out
-
-
 
 
 class Trainer:
@@ -124,12 +126,35 @@ class Trainer:
         return test_accuracy
 
 
+class BinarizeTransform:
+    def __call__(self, img):
+        img = img.convert('L')  # Convert to grayscale
+        np_img = np.array(img)
+        np_img = (np_img > 128).astype(np.uint8) * 255  # Simple threshold
+        return Image.fromarray(np_img)
+
+
+class AddGaussianNoise:
+    def __init__(self, mean=0., std=1.):
+        self.mean = mean
+        self.std = std
+
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}(mean={self.mean}, std={self.std})'
 
 
 def main():
     transform = transforms.Compose([
         transforms.Resize((128, 128)),
-        transforms.ToTensor()
+        BinarizeTransform(),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))], p=0.5),
+        transforms.RandomRotation(degrees=20),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+        transforms.ToTensor(),
+        AddGaussianNoise(0., 0.1)
     ])
     
     processor = PapyrusDataProcessor('Data/HomerCompTrainingReadCoco.json', 'Data/HomerCompTraining')
