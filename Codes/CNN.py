@@ -1,14 +1,12 @@
-import argparse
-from pathlib import Path
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from data_split import PapyrusDataProcessor
+from data_loader import CustomDataset
+from torch.utils.data import DataLoader
 from torchvision import transforms
-from data_loading import GreekCharactersDataset
+from sklearn.metrics import accuracy_score
 
-# CNN Model Definition
 class SimpleCNN(nn.Module):
     def __init__(self, num_classes):
         super(SimpleCNN, self).__init__()
@@ -33,51 +31,125 @@ class SimpleCNN(nn.Module):
         out = self.fc2(out)
         return out
 
-# Example usage
+
+class Trainer:
+    def __init__(self, model, device, criterion, optimizer):
+        self.model = model
+        self.device = device
+        self.criterion = criterion
+        self.optimizer = optimizer
+
+    def train(self, train_loader, num_epochs):
+        self.model.train()
+        for epoch in range(num_epochs):
+            running_loss = 0.0
+            all_preds = []
+            all_labels = []
+            for i, (images, labels) in enumerate(train_loader):
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+
+                for img, lbl in zip(images, labels):
+                    outputs = self.model(img)
+                    loss = self.criterion(outputs, lbl)
+
+                    self.optimizer.zero_grad()
+                    loss.backward()
+                    self.optimizer.step()
+
+                    running_loss += loss.item()
+                    _, predicted = torch.max(outputs.data, 1)
+                    all_preds.extend(predicted.cpu().numpy())
+                    all_labels.extend(lbl.cpu().numpy())
+
+                if (i+1) % 10 == 0:
+                    accuracy = accuracy_score(all_labels, all_preds)
+                    print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(train_loader)}], Loss: {running_loss/10:.4f}, Accuracy: {accuracy:.4f}')
+                    running_loss = 0.0
+                    all_preds = []
+                    all_labels = []
+
+    def validate(self, val_loader):
+        self.model.eval()
+        val_preds = []
+        val_labels = []
+        val_loss = 0.0
+        with torch.no_grad():
+            for i, (images, labels) in enumerate(val_loader):
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+
+                for img, lbl in zip(images, labels):
+                    outputs = self.model(img)
+                    loss = self.criterion(outputs, lbl)
+                    val_loss += loss.item()
+                    _, predicted = torch.max(outputs.data, 1)
+                    val_preds.extend(predicted.cpu().numpy())
+                    val_labels.extend(lbl.cpu().numpy())
+
+        val_accuracy = accuracy_score(val_labels, val_preds)
+        print(f'Validation Loss: {val_loss/len(val_loader):.4f}, Validation Accuracy: {val_accuracy:.4f}')
+        return val_loss / len(val_loader), val_accuracy
+
+    def test(self, test_loader):
+        self.model.eval()
+        test_preds = []
+        test_labels = []
+        with torch.no_grad():
+            for i, (images, labels) in enumerate(test_loader):
+                images = images.to(self.device)
+                labels = labels.to(self.device)
+
+                for img, lbl in zip(images, labels):
+                    outputs = self.model(img)
+                    _, predicted = torch.max(outputs.data, 1)
+                    test_preds.extend(predicted.cpu().numpy())
+                    test_labels.extend(lbl.cpu().numpy())
+
+        test_accuracy = accuracy_score(test_labels, test_preds)
+        print(f'Test Accuracy: {test_accuracy:.4f}')
+        return test_accuracy
+
+
+
 def main():
     transform = transforms.Compose([
         transforms.Resize((128, 128)),
         transforms.ToTensor()
     ])
     
-    dataset = GreekCharactersDataset(json_path='Data/HomerCompTrainingReadCoco.json', images_dir='Data/HomerCompTraining', transform=transform)
-    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    processor = PapyrusDataProcessor('Data/HomerCompTrainingReadCoco.json', 'Data/HomerCompTraining')
+    train_data, validation_data, test_data = processor.split_data()
+
+    train_bboxs, train_labels, train_image_dirs = zip(*train_data)
+    validation_bboxs, validation_labels, validation_image_dirs = zip(*validation_data)
+    test_bboxs, test_labels, test_image_dirs = zip(*test_data)
+
+    train_dataset = CustomDataset(train_image_dirs, train_bboxs, train_labels, transform=transform)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+
+    val_dataset = CustomDataset(validation_image_dirs, validation_bboxs, validation_labels, transform=transform)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+
+    test_dataset = CustomDataset(test_image_dirs, test_bboxs, test_labels, transform=transform)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
-    num_classes = len(dataset.category_id_to_name)
+    num_classes = 227
     model = SimpleCNN(num_classes)
     
-    # Training settings
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     num_epochs = 10
-    
-    # Training loop
+
+    trainer = Trainer(model, device, criterion, optimizer)
+
     print('Start training...')
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-        for i, (images, labels) in enumerate(dataloader):
-            images = images.to(device)
-            labels = labels.to(device)
-            
-            # Forward pass
-            outputs = model(images)
-            loss = criterion(outputs, labels)
-            
-            # Backward and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            running_loss += loss.item()
-            
-            if (i+1) % 10 == 0:  # Print every 10 batches
-                print(f'Epoch [{epoch+1}/{num_epochs}], Step [{i+1}/{len(dataloader)}], Loss: {running_loss/10:.4f}')
-                running_loss = 0.0
-    
-    print('Finished Training')
+    trainer.train(train_loader, num_epochs)
+    trainer.validate(val_loader)
+    trainer.test(test_loader)
+    print('Finished Training and Testing')
 
 if __name__ == '__main__':
     main()

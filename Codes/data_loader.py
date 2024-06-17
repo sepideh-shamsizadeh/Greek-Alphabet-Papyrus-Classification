@@ -3,7 +3,6 @@ from PIL import Image
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from data_split import train_labels, train_image_dirs, train_bboxs
 
 class CustomDataset(Dataset):
     def __init__(self, image_dirs, bboxs, targets, transform=None):
@@ -36,22 +35,8 @@ class CustomDataset(Dataset):
             images.append(crop)
             labels.append(target)
 
+        # Convert lists to tensors
+        images = torch.stack(images)
+        labels = torch.tensor(labels, dtype=torch.long)
+
         return images, labels
-
-# Define any transformations (if needed)
-transform = transforms.Compose([
-    transforms.Resize((128, 128)),  # Resize to 128x128 (optional)
-    transforms.ToTensor(),  # Convert to tensor
-])
-
-# Create dataset and dataloader
-dataset = CustomDataset(train_image_dirs, train_bboxs, train_labels, transform=transform)
-dataloader = DataLoader(dataset, batch_size=1, shuffle=True)
-
-# Example usage
-for batch in dataloader:
-    images, labels = batch
-    for img, lbl in zip(images[0], labels[0]):
-        print(img.shape, lbl)  # Tensor shape and label
-
-print("Total batches:", len(dataloader))
