@@ -32,9 +32,7 @@ class SimpleCNN(nn.Module):
     def forward(self, x):
         out = self.layer1(x)
         out = self.layer2(out)
-        # print(f"Shape before flattening: {out.shape}")
         out = out.view(out.size(0), -1)  # Flatten the output
-        # print(f"Shape after flattening: {out.shape}")
         out = self.fc1(out)
         out = self.fc2(out)
         return out

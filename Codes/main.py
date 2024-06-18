@@ -20,6 +20,8 @@ parser.add_argument('--data_dir', type=str, required=True, help='Directory with 
 parser.add_argument('--model_name', type=str, required=True, help='Name of the model to train.')
 parser.add_argument('--save_path', type=str, required=True, help='Directory to save the result')
 parser.add_argument('--num_epochs', type=int, default=100, help='Number of epochs')
+parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+
 args = parser.parse_args()
 
 NUM_CLASSES = 227
@@ -38,7 +40,7 @@ def main():
     
     # Split data to train, validation and test
     processor = PapyrusDataProcessor(args.json_path, args.data_dir)
-    train_data, validation_data, test_data = processor.split_data()
+    train_data, validation_data, test_data = processor.split_data() 
 
     train_bboxs, train_labels, train_image_dirs = zip(*train_data)
     validation_bboxs, validation_labels, validation_image_dirs = zip(*validation_data)
@@ -48,9 +50,9 @@ def main():
     val_dataset = CustomDataset(validation_image_dirs, args.data_dir, validation_bboxs, validation_labels, transform=transform)
     test_dataset = CustomDataset(test_image_dirs, args.data_dir, test_bboxs, test_labels, transform=transform)
     
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     
     model = get_model(args.model_name, NUM_CLASSES)
     
