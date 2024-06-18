@@ -1,4 +1,3 @@
-import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -6,28 +5,13 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from sklearn.metrics import accuracy_score
 from data_split import PapyrusDataProcessor
-from data_loader import CustomDataset
+from data_loader import CustomDataset, check_images
 from trainer import Trainer
-from cnn_model import SimpleCNN
-from transformer_model import ResNetTransformer, SimpleCNNTransformer, vit_transformer
-
-def get_model(model_name, num_classes):
-    if model_name == 'resnet_transformer':
-        return ResNetTransformer(num_classes)
-    elif model_name == 'simple_cnn_transformer':
-        return SimpleCNNTransformer(num_classes)
-    elif model_name == 'simple_cnn':
-        return SimpleCNN(num_classes)
-    elif model_name == 'resnet':
-        return resnet(num_classes)
-    elif model_name == "vit_transformer":
-        return vit_transformer(num_classes)
-    else:
-        raise ValueError(f"Unknown model name: {model_name}")
+from cnn_model import SimpleCNN, resnet
+from transformer_model import ResNetTransformer, SimpleCNNTransformer
 
 
-
-def main(json_path, data_dir, model_name):
+def main():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),  # ResNet typically uses 224x224 input size
         transforms.RandomRotation(degrees=20),
@@ -37,7 +21,7 @@ def main(json_path, data_dir, model_name):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     
-    processor = PapyrusDataProcessor(json_path, data_dir)
+    processor = PapyrusDataProcessor('Data/HomerCompTrainingReadCoco.json', 'Data/HomerCompTraining')
     train_data, validation_data, test_data = processor.split_data()
 
     train_bboxs, train_labels, train_image_dirs = zip(*train_data)
@@ -53,7 +37,8 @@ def main(json_path, data_dir, model_name):
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     num_classes = 227
-    model = get_model(model_name, num_classes)
+    model = ResNetTransformer(num_classes)
+    
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -67,13 +52,7 @@ def main(json_path, data_dir, model_name):
     trainer.train(train_loader, num_epochs, val_loader)
     trainer.test(test_loader)
     print('Finished Training and Testing')
-    torch.save(model.state_dict(), f'Data/model_{model_name}.pth')
+    torch.save(model.state_dict(), 'Data/model_resnet_transformer.pth')
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a model on Papyrus dataset.')
-    parser.add_argument('--json_path', type=str, required=True, help='Path to the JSON file with annotations.')
-    parser.add_argument('--data_dir', type=str, required=True, help='Directory with image data.')
-    parser.add_argument('--model_name', type=str, required=True, choices=['resnet_transformer', 'simple_cnn_transformer', 'simple_cnn', 'resnet', 'vit_transformer'], help='Name of the model to train.')
-    args = parser.parse_args()
-
-    main(args.json_path, args.data_dir, args.model_name)
+    main()

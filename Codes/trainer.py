@@ -1,3 +1,4 @@
+import timm
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -5,7 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from sklearn.metrics import accuracy_score
 from data_split import PapyrusDataProcessor
-from data_loader import CustomDataset, check_images
+from data_loader import CustomDataset
 
 
 class Trainer:

@@ -96,5 +96,3 @@ class CustomDataset(Dataset):
             labels.append(int(target))  # Ensure labels are integers
 
         return torch.stack(images), torch.tensor(labels)
-
-

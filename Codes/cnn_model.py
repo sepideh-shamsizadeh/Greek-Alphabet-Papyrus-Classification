@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms, models
 from sklearn.metrics import accuracy_score
 from data_split import PapyrusDataProcessor
-from data_loader import CustomDataset, check_images
+from data_loader import CustomDataset
 from torchvision.models import ResNet50_Weights
 
 
