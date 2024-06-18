@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score
 from data_split import PapyrusDataProcessor
 from data_loader import CustomDataset
 from trainer import Trainer
-from cnn_model import SimpleCNN
+from cnn_model import SimpleCNN, resnet
 from transformer_model import ResNetTransformer, SimpleCNNTransformer, vit_transformer
 
 def get_model(model_name, num_classes):
